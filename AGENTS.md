@@ -54,3 +54,32 @@ See `protocol/CONTRACT.md` for the complete endpoint specification.
 - Missing checkpoint → Not a silent success, investigate logs
 - Startup failure → Inspect `manifest.json` and `server.log`
 - Stale process → Use `/restore` to recover from last checkpoint
+
+## Milestone Workflow (jj)
+
+After completing each milestone and verifying against BDD scenarios:
+
+1. **Describe the changes:**
+
+   ```bash
+   jj describe -m " {verb} <short description>
+   
+   - {verb} <key change 1>
+   - {verb} <key change 2>
+   
+   ```
+
+2. **Create the next milestone branch:**
+
+   ```bash
+   jj new
+   ```
+
+
+3. **Verification checklist before describing:**
+
+   - All BDD scenarios pass
+   - Both R and Python backends tested
+   - Protocol contract updated (if applicable)
+   - Documentation updated
+   - No regressions in existing functionality
