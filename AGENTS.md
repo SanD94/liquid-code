@@ -80,6 +80,12 @@ When you start fresh, you need to find or create your session:
     --task-id "my-task-123" \
     --description "Analyze Q1 sales data" \
     --files "sales.csv,report.md"
+
+# Step 5: Alternatively, resume from an old session's checkpoint
+./scripts/start-r-session.sh \
+    --resume-from "<old-session-id>" \
+    --task-id "my-task-123" \
+    --description "Continue previous analysis"
 ```
 
 ### Session Resume Workflow

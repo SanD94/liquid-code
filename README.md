@@ -35,6 +35,7 @@ See `docs/liquid-code-bdd.md` for the full BDD specification.
 | 8 | Session Resilience | Auto-checkpoint, crash recovery, health monitoring |
 | 9 | Async Eval | Non-blocking eval with job IDs |
 | 10 | Agent Session Discovery | UUIDv6, task metadata, active session tracking |
+| 11 | Cross-Session Restore | Resume from checkpoint in old session |
 
 ## Session Manifest
 
@@ -80,6 +81,16 @@ Each session owns a `manifest.json` with lifecycle and task metadata:
 ./scripts/get-active-session.sh       # Get current session info
 ./scripts/get-active-session.sh --port-only
 ./scripts/stop-session.sh <session-id>
+```
+
+**Resume from Old Session:**
+
+```bash
+# List stopped sessions to find one with checkpoint
+./scripts/list-sessions.sh --json --status stopped
+
+# Resume from a previous session's checkpoint
+./scripts/start-r-session.sh --resume-from <old-session-id> --description "Continue analysis"
 ```
 
 **For Agents:**

@@ -222,6 +222,37 @@ This document defines milestone-based behavior so the bridge kit can be implemen
 - Then the agent can read `~/.liquid-code/active`
 - And query the corresponding session to verify it's still valid
 
+## Milestone 11: Cross-Session Restore
+
+### Scenario: Resume from old session checkpoint
+
+- Given a stopped session with a saved checkpoint at `sessions/<old-id>/checkpoint.*`
+- When an operator starts a new session with `--resume-from <old-session-id>`
+- Then the new session's manifest references the old checkpoint path
+- And `POST /restore` loads the checkpoint from the old session
+- And previously saved variables reappear in the backend environment
+
+### Scenario: New session has independent lifecycle after resume
+
+- Given a new session created via `--resume-from <old-session-id>`
+- When the new session checkpoints its state
+- Then the checkpoint is written to the new session's directory
+- And the old session's checkpoint remains unchanged
+
+### Scenario: Resume with task metadata
+
+- Given an old session with task metadata
+- When resuming from that session
+- Then the new session's manifest includes `task_id` and `task_description`
+- And the session listing shows the resumed session with its own status
+
+### Scenario: Resume fails gracefully for invalid checkpoint
+
+- Given an invalid or missing checkpoint path
+- When an operator attempts to resume
+- Then the script reports an error without creating a broken session
+- And logs indicate the checkpoint was not found
+
 ## Verification Checklist
 
 1. Review the manifest shape before implementation changes.
@@ -238,3 +269,6 @@ This document defines milestone-based behavior so the bridge kit can be implemen
 12. Verify `~/.liquid-code/active` contains current session ID.
 13. Verify manifest includes task metadata when provided.
 14. Verify `list-sessions.sh --json` outputs valid JSON.
+15. Resume from old session checkpoint and verify state loads correctly.
+16. Verify new session creates its own checkpoint after resume.
+17. Verify resume fails gracefully for invalid checkpoint path.
