@@ -18,24 +18,21 @@ Agent -> Bridge Kit (durable) -> Session Bridge (ephemeral) -> Target Runtime
 - `prompts/` contains agent guidance for using the bridge safely.
 - `sessions/` is where runtime session directories are created.
 
-## Milestones
+## All Milestones Complete
 
-Milestones 1-5 are complete. See `docs/liquid-code-bdd.md` for the full BDD specification.
+See `docs/liquid-code-bdd.md` for the full BDD specification.
 
-### Completed
-1. **Reliable R Bridge** - Start, health, eval, shutdown
-2. **Output And Artifact Discipline** - Truncation, artifact references, slicing
-3. **Recovery** - Checkpoint save and restore
-4. **Agent Guidance** - Prompts for shape-first workflow
-5. **Python Backend Consistency** - Both backends match the shared contract
-
-### In Progress
-6. **Session Management CLI** - List sessions, status, multi-backend scripts
-
-### Planned
-7. **File Operations** - Upload/download, artifact listing
-8. **Session Resilience** - Auto-checkpoint, crash recovery, stale detection
-9. **Async Eval** - Non-blocking eval with job IDs
+| # | Milestone | Description |
+|---|-----------|-------------|
+| 1 | Reliable R Bridge | Start, health, eval, shutdown |
+| 2 | Output And Artifact Discipline | Truncation, artifact references, slicing |
+| 3 | Recovery | Checkpoint save and restore |
+| 4 | Agent Guidance | Prompts for shape-first workflow |
+| 5 | Python Backend Consistency | Both backends match the shared contract |
+| 6 | Session Management CLI | List sessions, multi-backend scripts |
+| 7 | File Operations | Upload, download, artifact listing |
+| 8 | Session Resilience | Auto-checkpoint, crash recovery, health monitoring |
+| 9 | Async Eval | Non-blocking eval with job IDs |
 
 ## Session Manifest
 
@@ -57,11 +54,40 @@ Each session owns a `manifest.json` with the minimum lifecycle metadata:
 
 ## Quick Start
 
-Use the R starter script to create a session directory, write a manifest, and launch the server template:
+**R Session:**
 
 ```bash
 ./scripts/start-r-session.sh
 curl http://127.0.0.1:<port>/health
 ```
 
-Use `./scripts/stop-session.sh <session-id>` to shut down a running session.
+**Python Session:**
+
+```bash
+./scripts/start-python-session.sh
+curl http://127.0.0.1:<port>/health
+```
+
+**Session Management:**
+
+```bash
+./scripts/list-sessions.sh
+./scripts/stop-session.sh <session-id>
+```
+
+## Protocol Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /health` | Liveness and session metadata |
+| `POST /eval` | Execute code (sync or async) |
+| `GET /jobs` | List async job statuses |
+| `GET /result/<job_id>` | Get async job result |
+| `GET /objects` | List runtime objects with summaries |
+| `GET /artifacts` | List artifact directory |
+| `GET /artifact` | Read artifact in slices |
+| `GET /download/<path>` | Stream artifact as file |
+| `POST /upload` | Upload file to artifacts |
+| `POST /checkpoint` | Save runtime state |
+| `POST /restore` | Restore from checkpoint |
+| `POST /shutdown` | Graceful shutdown |

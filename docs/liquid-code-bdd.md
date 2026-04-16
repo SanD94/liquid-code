@@ -162,21 +162,28 @@ This document defines milestone-based behavior so the bridge kit can be implemen
 - Then the new server can call `/restore` to recover state
 - And the agent receives the same variables as before the crash
 
-### Scenario: Health check detects stale pid
+### Scenario: Health check reports checkpoint status
 
-- Given a session whose pid is no longer running
+- Given a running session
 - When a client calls `GET /health`
-- Then the response includes `stale: true`
-- And the response still includes session metadata for recovery
+- Then the response includes `seconds_since_checkpoint`
+- And the response includes session metadata for recovery
 
-## Milestone 9: Async Eval (Future)
+## Milestone 9: Async Eval
 
 ### Scenario: Eval returns immediately with job ID
 
 - Given a running session
-- When a client posts long-running code to `POST /eval`
+- When a client posts `{"code": "...", "async": true}` to `POST /eval`
 - Then the response returns a job_id immediately
 - And the actual result is available at `GET /result/<job_id>`
+
+### Scenario: List pending jobs
+
+- Given a running session with submitted jobs
+- When a client calls `GET /jobs`
+- Then the response includes all jobs with their status
+- And each job shows submitted_at and completed_at timestamps
 
 ## Verification Checklist
 
@@ -188,4 +195,5 @@ This document defines milestone-based behavior so the bridge kit can be implemen
 6. Run `scripts/list-sessions.sh` and verify output format.
 7. Upload a file and verify it appears in the artifact directory.
 8. Verify auto-checkpoint triggers on configured interval.
-9. Kill a session process and verify stale detection on health check.
+9. Submit async job and retrieve result via `/result/<job_id>`.
+10. Verify `/jobs` lists all submitted async jobs.
