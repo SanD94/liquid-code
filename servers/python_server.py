@@ -47,6 +47,23 @@ def artifact_path(rel_path):
     return candidate
 
 
+def detect_artifacts(before):
+    artifact_root = Path(manifest["artifact_dir"])
+    after = {str(p) for p in artifact_root.rglob("*") if p.is_file()}
+    new_files = after - before
+    artifacts = []
+    for f in new_files:
+        path = Path(f)
+        artifacts.append(
+            {
+                "path": str(path.relative_to(artifact_root)),
+                "size": path.stat().st_size,
+                "mtime": str(path.stat().st_mtime),
+            }
+        )
+    return artifacts
+
+
 def checkpoint_state():
     return {name: value for name, value in runtime.items() if not name.startswith("__")}
 
@@ -87,24 +104,52 @@ class Handler(BaseHTTPRequestHandler):
                         "summary": repr(value)[:160],
                     }
                 )
-            self.send_json(200, {"ok": True, "objects": objects, "session": {"id": manifest["id"], "port": manifest["port"]}})
+            self.send_json(
+                200,
+                {
+                    "ok": True,
+                    "objects": objects,
+                    "session": {"id": manifest["id"], "port": manifest["port"]},
+                },
+            )
             return
 
         if parsed.path == "/artifact":
             params = parse_qs(parsed.query)
             rel_path = params.get("path", [""])[0]
             if not rel_path:
-                self.send_json(400, {"ok": False, "error": "missing artifact path", "session": {"id": manifest["id"], "port": manifest["port"]}})
+                self.send_json(
+                    400,
+                    {
+                        "ok": False,
+                        "error": "missing artifact path",
+                        "session": {"id": manifest["id"], "port": manifest["port"]},
+                    },
+                )
                 return
             offset = int(params.get("offset", ["0"])[0])
             limit = int(params.get("limit", ["4096"])[0])
             try:
                 path = artifact_path(rel_path)
             except ValueError as err:
-                self.send_json(400, {"ok": False, "error": str(err), "session": {"id": manifest["id"], "port": manifest["port"]}})
+                self.send_json(
+                    400,
+                    {
+                        "ok": False,
+                        "error": str(err),
+                        "session": {"id": manifest["id"], "port": manifest["port"]},
+                    },
+                )
                 return
             if not path.exists():
-                self.send_json(404, {"ok": False, "error": "artifact not found", "session": {"id": manifest["id"], "port": manifest["port"]}})
+                self.send_json(
+                    404,
+                    {
+                        "ok": False,
+                        "error": "artifact not found",
+                        "session": {"id": manifest["id"], "port": manifest["port"]},
+                    },
+                )
                 return
 
             with path.open("rb") as fh:
@@ -126,7 +171,14 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
 
-        self.send_json(404, {"ok": False, "error": f"no route for GET {parsed.path}", "session": {"id": manifest["id"], "port": manifest["port"]}})
+        self.send_json(
+            404,
+            {
+                "ok": False,
+                "error": f"no route for GET {parsed.path}",
+                "session": {"id": manifest["id"], "port": manifest["port"]},
+            },
+        )
 
     def do_POST(self):
         parsed = urlparse(self.path)
@@ -136,6 +188,8 @@ class Handler(BaseHTTPRequestHandler):
             code = payload.get("code", "")
             buffer = io.StringIO()
             caught_warnings = []
+            artifact_root = Path(manifest["artifact_dir"])
+            before_artifacts = {str(p) for p in artifact_root.rglob("*") if p.is_file()}
 
             try:
                 with warnings.catch_warnings(record=True) as warning_records:
@@ -151,6 +205,17 @@ class Handler(BaseHTTPRequestHandler):
 
             stdout_lines = buffer.getvalue().splitlines()
             stdout_lines, truncated, total_lines = trim_stdout(stdout_lines)
+            after_artifacts = {str(p) for p in artifact_root.rglob("*") if p.is_file()}
+            artifacts = []
+            for f in after_artifacts - before_artifacts:
+                path = Path(f)
+                artifacts.append(
+                    {
+                        "path": str(path.relative_to(artifact_root)),
+                        "size": path.stat().st_size,
+                        "mtime": str(path.stat().st_mtime),
+                    }
+                )
             self.send_json(
                 200,
                 {
@@ -158,7 +223,7 @@ class Handler(BaseHTTPRequestHandler):
                     "stdout": stdout_lines,
                     "warnings": caught_warnings,
                     "messages": [],
-                    "artifacts": [],
+                    "artifacts": artifacts,
                     "truncated": truncated,
                     "total_lines": total_lines,
                     "error": error,
@@ -171,27 +236,65 @@ class Handler(BaseHTTPRequestHandler):
             checkpoint_path = Path(manifest["checkpoint_path"])
             with checkpoint_path.open("wb") as fh:
                 pickle.dump(checkpoint_state(), fh)
-            self.send_json(200, {"ok": True, "checkpoint_path": manifest["checkpoint_path"], "session": {"id": manifest["id"], "port": manifest["port"]}})
+            self.send_json(
+                200,
+                {
+                    "ok": True,
+                    "checkpoint_path": manifest["checkpoint_path"],
+                    "session": {"id": manifest["id"], "port": manifest["port"]},
+                },
+            )
             return
 
         if parsed.path == "/restore":
             checkpoint_path = Path(manifest["checkpoint_path"])
             if not checkpoint_path.exists():
-                self.send_json(404, {"ok": False, "restored": False, "checkpoint_path": manifest["checkpoint_path"], "error": "checkpoint not found", "session": {"id": manifest["id"], "port": manifest["port"]}})
+                self.send_json(
+                    404,
+                    {
+                        "ok": False,
+                        "restored": False,
+                        "checkpoint_path": manifest["checkpoint_path"],
+                        "error": "checkpoint not found",
+                        "session": {"id": manifest["id"], "port": manifest["port"]},
+                    },
+                )
                 return
             with checkpoint_path.open("rb") as fh:
                 runtime.clear()
                 runtime["__builtins__"] = __builtins__
                 runtime.update(pickle.load(fh))
-            self.send_json(200, {"ok": True, "restored": True, "checkpoint_path": manifest["checkpoint_path"], "session": {"id": manifest["id"], "port": manifest["port"]}})
+            self.send_json(
+                200,
+                {
+                    "ok": True,
+                    "restored": True,
+                    "checkpoint_path": manifest["checkpoint_path"],
+                    "session": {"id": manifest["id"], "port": manifest["port"]},
+                },
+            )
             return
 
         if parsed.path == "/shutdown":
-            self.send_json(200, {"ok": True, "shutting_down": True, "session": {"id": manifest["id"], "port": manifest["port"]}})
+            self.send_json(
+                200,
+                {
+                    "ok": True,
+                    "shutting_down": True,
+                    "session": {"id": manifest["id"], "port": manifest["port"]},
+                },
+            )
             shutdown_event.set()
             return
 
-        self.send_json(404, {"ok": False, "error": f"no route for POST {parsed.path}", "session": {"id": manifest["id"], "port": manifest["port"]}})
+        self.send_json(
+            404,
+            {
+                "ok": False,
+                "error": f"no route for POST {parsed.path}",
+                "session": {"id": manifest["id"], "port": manifest["port"]},
+            },
+        )
 
 
 server = ThreadingHTTPServer(("127.0.0.1", int(manifest["port"])), Handler)

@@ -15,6 +15,7 @@ manifest <- fromJSON(manifest_path, simplifyVector = TRUE)
 
 state <- new.env(parent = emptyenv())
 state$runtime <- new.env(parent = globalenv())
+state$runtime$manifest <- manifest
 state$output_limit <- 50L
 state$shutdown_requested <- FALSE
 
@@ -42,6 +43,7 @@ parse_query <- function(query) {
   if (!nzchar(query)) {
     return(list())
   }
+  query <- sub("^\\?", "", query)
 
   parts <- strsplit(query, "&", fixed = TRUE)[[1]]
   out <- list()
@@ -83,9 +85,23 @@ list_objects <- function() {
   })
 }
 
+detect_artifacts <- function(before) {
+  after <- list.files(manifest$artifact_dir, full.names = TRUE, all.files = TRUE)
+  new_files <- setdiff(after, before)
+  lapply(new_files, function(f) {
+    info <- file.info(f)
+    list(
+      path = basename(f),
+      size = as.numeric(info$size),
+      mtime = as.character(info$mtime)
+    )
+  })
+}
+
 run_eval <- function(code) {
   warnings <- character()
   messages <- character()
+  before_artifacts <- list.files(manifest$artifact_dir, full.names = TRUE, all.files = TRUE)
 
   result <- tryCatch(
     withCallingHandlers(
@@ -108,13 +124,14 @@ run_eval <- function(code) {
   )
 
   trimmed <- trim_stdout(result$stdout)
+  artifacts <- detect_artifacts(before_artifacts)
 
   list(
     ok = result$ok,
     stdout = unname(trimmed$lines),
     warnings = unname(warnings),
     messages = unname(messages),
-    artifacts = list(),
+    artifacts = artifacts,
     truncated = trimmed$truncated,
     total_lines = trimmed$total,
     error = result$error,
