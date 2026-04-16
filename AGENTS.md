@@ -106,6 +106,32 @@ curl http://127.0.0.1:$PORT/health
 # Resume work...
 ```
 
+### Cross-Session Restore (Resume from Old Checkpoint)
+
+To continue from a previous session's checkpoint:
+
+```bash
+# Step 1: Find old sessions with checkpoints
+./scripts/list-sessions.sh --json --status stopped
+
+# Step 2: Start new session with --resume-from
+./scripts/start-r-session.sh \
+    --resume-from "<old-session-id>" \
+    --task-id "continue-analysis" \
+    --description "Continue from previous work"
+
+# Step 3: Call /restore to load the checkpoint state
+PORT=$(./scripts/get-active-session.sh --port-only)
+curl -X POST http://127.0.0.1:$PORT/restore
+
+# Step 4: Verify variables are restored
+curl -X POST http://127.0.0.1:$PORT/eval \
+    -H "Content-Type: application/json" \
+    -d '{"code":"print(ls())"}'
+```
+
+The new session has independent lifecycle - its checkpoints save to its own directory.
+
 ### Rules
 
 1. Check `GET /health` before assuming the session is alive.

@@ -54,9 +54,13 @@ Each session owns a `manifest.json` with lifecycle and task metadata:
   "session_dir": "./sessions/r-01f25d24-8464-3440-8000-a35805b91c31",
   "log_path": "./sessions/.../server.log",
   "checkpoint_path": "./sessions/.../checkpoint.RData",
-  "artifact_dir": "./sessions/.../artifacts"
+  "artifact_dir": "./sessions/.../artifacts",
+  "resumed_from": "r-01f25d23-...",
+  "resumed_from_checkpoint": "./sessions/.../checkpoint.RData"
 }
 ```
+
+The `resumed_from` and `resumed_from_checkpoint` fields are only present in sessions created with `--resume-from`.
 
 ## Quick Start
 
@@ -89,9 +93,14 @@ Each session owns a `manifest.json` with lifecycle and task metadata:
 # List stopped sessions to find one with checkpoint
 ./scripts/list-sessions.sh --json --status stopped
 
-# Resume from a previous session's checkpoint
+# Start new session that loads checkpoint from old session
 ./scripts/start-r-session.sh --resume-from <old-session-id> --description "Continue analysis"
+
+# Load the checkpoint state into the new session
+curl -X POST http://127.0.0.1:<port>/restore
 ```
+
+The new session writes its own checkpoints to its own directory, keeping the old session's checkpoint unchanged.
 
 **For Agents:**
 

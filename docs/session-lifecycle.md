@@ -59,6 +59,17 @@ For agents resuming from an empty slate:
 4. Select appropriate session based on `task_id` or `task_description`
 5. If no suitable session, create new with `scripts/start-*-session.sh --task-id <id> --description <desc>`
 
+## Cross-Session Restore
+
+Agents can resume from a previous session's checkpoint:
+
+1. List stopped sessions: `scripts/list-sessions.sh --json --status stopped`
+2. Start new session with `--resume-from <old-session-id>`
+3. Call `POST /restore` to load the checkpoint into the new session
+4. The new session has independent lifecycle - its checkpoints save to its own directory
+
+The new session manifest includes `resumed_from` (old session ID) and `resumed_from_checkpoint` (path to old checkpoint). After `/restore`, these fields are removed and `checkpoint_path` points to the new session's directory.
+
 ## Manual Verification
 
 1. Start a session and inspect `manifest.json` before calling any endpoint.
