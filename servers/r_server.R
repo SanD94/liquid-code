@@ -191,6 +191,92 @@ read_artifact <- function(req) {
   ))
 }
 
+list_artifacts <- function() {
+  files <- list.files(manifest$artifact_dir, full.names = TRUE, all.files = TRUE)
+  files <- files[file.info(files)$isdir == FALSE]
+  lapply(files, function(f) {
+    info <- file.info(f)
+    list(
+      path = basename(f),
+      size = as.numeric(info$size),
+      mtime = as.character(info$mtime)
+    )
+  })
+}
+
+upload_artifact <- function(req) {
+  body <- parse_body(req)
+  filename <- body$filename %||% ""
+  content <- body$content %||% ""
+  encoding <- body$encoding %||% "utf-8"
+
+  if (!nzchar(filename)) {
+    return(write_json(400L, list(ok = FALSE, error = "missing filename", session = list(id = manifest$id, port = manifest$port))))
+  }
+
+  safe_path <- tryCatch(relativize_path(filename), error = function(err) err)
+  if (inherits(safe_path, "error")) {
+    return(write_json(400L, list(ok = FALSE, error = conditionMessage(safe_path), session = list(id = manifest$id, port = manifest$port))))
+  }
+
+  if (encoding == "base64") {
+    raw_content <- base64_dec(content)
+  } else {
+    raw_content <- charToRaw(content)
+  }
+
+  writeBin(raw_content, safe_path)
+  info <- file.info(safe_path)
+
+  write_json(200L, list(
+    ok = TRUE,
+    path = filename,
+    size = as.numeric(info$size),
+    session = list(id = manifest$id, port = manifest$port)
+  ))
+}
+
+stream_artifact <- function(req) {
+  path <- req$PATH_INFO
+  if (!startsWith(path, "/download/")) {
+    return(write_json(400L, list(ok = FALSE, error = "invalid download path", session = list(id = manifest$id, port = manifest$port))))
+  }
+  rel_path <- substring(path, 11)
+  rel_path <- URLdecode(rel_path)
+
+  if (!nzchar(rel_path)) {
+    return(write_json(400L, list(ok = FALSE, error = "missing artifact path", session = list(id = manifest$id, port = manifest$port))))
+  }
+
+  resolved <- tryCatch(relativize_path(rel_path), error = function(err) err)
+  if (inherits(resolved, "error")) {
+    return(write_json(400L, list(ok = FALSE, error = conditionMessage(resolved), session = list(id = manifest$id, port = manifest$port))))
+  }
+
+  if (!file.exists(resolved)) {
+    return(write_json(404L, list(ok = FALSE, error = "artifact not found", session = list(id = manifest$id, port = manifest$port))))
+  }
+
+  bytes <- readBin(resolved, what = "raw", n = file.info(resolved)$size)
+  content_type <- if (grepl("\\.(png|jpg|jpeg|gif|webp)$", resolved, ignore.case = TRUE)) {
+    "image/png"
+  } else if (grepl("\\.pdf$", resolved, ignore.case = TRUE)) {
+    "application/pdf"
+  } else {
+    "application/octet-stream"
+  }
+
+  list(
+    status = 200L,
+    headers = list(
+      "Content-Type" = content_type,
+      "Content-Disposition" = sprintf("attachment; filename=\"%s\"", basename(resolved)),
+      "Content-Length" = as.character(length(bytes))
+    ),
+    body = rawToChar(bytes)
+  )
+}
+
 `%||%` <- function(x, y) if (is.null(x)) y else x
 
 app <- list(call = function(req) {
@@ -207,6 +293,18 @@ app <- list(call = function(req) {
 
   if (identical(method, "GET") && identical(path, "/artifact")) {
     return(read_artifact(req))
+  }
+
+  if (identical(method, "GET") && identical(path, "/artifacts")) {
+    return(write_json(200L, list(ok = TRUE, artifacts = list_artifacts(), session = list(id = manifest$id, port = manifest$port))))
+  }
+
+  if (identical(method, "POST") && identical(path, "/upload")) {
+    return(upload_artifact(req))
+  }
+
+  if (identical(method, "GET") && startsWith(path, "/download/")) {
+    return(stream_artifact(req))
   }
 
   if (identical(method, "POST") && identical(path, "/eval")) {

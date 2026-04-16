@@ -171,6 +171,69 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
 
+        if parsed.path == "/artifacts":
+            artifact_root = Path(manifest["artifact_dir"])
+            artifacts = []
+            for p in artifact_root.rglob("*"):
+                if p.is_file():
+                    artifacts.append(
+                        {
+                            "path": str(p.relative_to(artifact_root)),
+                            "size": p.stat().st_size,
+                            "mtime": str(p.stat().st_mtime),
+                        }
+                    )
+            self.send_json(
+                200,
+                {
+                    "ok": True,
+                    "artifacts": artifacts,
+                    "session": {"id": manifest["id"], "port": manifest["port"]},
+                },
+            )
+            return
+
+        if parsed.path.startswith("/download/"):
+            rel_path = parsed.path[10:]
+            try:
+                path = artifact_path(rel_path)
+            except ValueError as err:
+                self.send_json(
+                    400,
+                    {
+                        "ok": False,
+                        "error": str(err),
+                        "session": {"id": manifest["id"], "port": manifest["port"]},
+                    },
+                )
+                return
+            if not path.exists():
+                self.send_json(
+                    404,
+                    {
+                        "ok": False,
+                        "error": "artifact not found",
+                        "session": {"id": manifest["id"], "port": manifest["port"]},
+                    },
+                )
+                return
+
+            content_type = "application/octet-stream"
+            if path.suffix in (".png", ".jpg", ".jpeg", ".gif", ".webp"):
+                content_type = "image/png"
+            elif path.suffix == ".pdf":
+                content_type = "application/pdf"
+
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header(
+                "Content-Disposition", f'attachment; filename="{path.name}"'
+            )
+            self.send_header("Content-Length", str(path.stat().st_size))
+            self.end_headers()
+            self.wfile.write(path.read_bytes())
+            return
+
         self.send_json(
             404,
             {
@@ -227,6 +290,55 @@ class Handler(BaseHTTPRequestHandler):
                     "truncated": truncated,
                     "total_lines": total_lines,
                     "error": error,
+                    "session": {"id": manifest["id"], "port": manifest["port"]},
+                },
+            )
+            return
+
+        if parsed.path == "/upload":
+            import base64
+
+            payload = self.read_json()
+            filename = payload.get("filename", "")
+            content = payload.get("content", "")
+            encoding = payload.get("encoding", "utf-8")
+
+            if not filename:
+                self.send_json(
+                    400,
+                    {
+                        "ok": False,
+                        "error": "missing filename",
+                        "session": {"id": manifest["id"], "port": manifest["port"]},
+                    },
+                )
+                return
+
+            try:
+                path = artifact_path(filename)
+            except ValueError as err:
+                self.send_json(
+                    400,
+                    {
+                        "ok": False,
+                        "error": str(err),
+                        "session": {"id": manifest["id"], "port": manifest["port"]},
+                    },
+                )
+                return
+
+            if encoding == "base64":
+                data = base64.b64decode(content)
+            else:
+                data = content.encode("utf-8")
+
+            path.write_bytes(data)
+            self.send_json(
+                200,
+                {
+                    "ok": True,
+                    "path": filename,
+                    "size": path.stat().st_size,
                     "session": {"id": manifest["id"], "port": manifest["port"]},
                 },
             )
