@@ -47,7 +47,6 @@ parse_query <- function(query) {
     return(list())
   }
   query <- sub("^\\?", "", query)
-
   parts <- strsplit(query, "&", fixed = TRUE)[[1]]
   out <- list()
   for (part in parts) {
@@ -57,6 +56,11 @@ parse_query <- function(query) {
     out[[key]] <- value
   }
   out
+}
+
+write_manifest <- function(m) {
+  manifest_json <- toJSON(m, auto_unbox = TRUE, pretty = TRUE, null = "null")
+  writeLines(manifest_json, manifest_path)
 }
 
 relativize_path <- function(path) {
@@ -193,11 +197,23 @@ save_checkpoint <- function() {
 }
 
 restore_checkpoint <- function() {
-  if (!file.exists(manifest$checkpoint_path)) {
-    return(list(ok = FALSE, restored = FALSE, checkpoint_path = manifest$checkpoint_path, error = "checkpoint not found", session = list(id = manifest$id, port = manifest$port)))
+  source_path <- manifest$checkpoint_path
+  
+  if (!is.null(manifest$resumed_from_checkpoint) && nzchar(manifest$resumed_from_checkpoint)) {
+    source_path <- manifest$resumed_from_checkpoint
+  }
+  
+  if (!file.exists(source_path)) {
+    return(list(ok = FALSE, restored = FALSE, checkpoint_path = source_path, error = "checkpoint not found", session = list(id = manifest$id, port = manifest$port)))
   }
 
-  load(manifest$checkpoint_path, envir = state$runtime)
+  load(source_path, envir = state$runtime)
+  
+  new_checkpoint_path <- file.path(manifest$session_dir, "checkpoint.RData")
+  manifest$checkpoint_path <- new_checkpoint_path
+  manifest <- manifest[names(manifest) != "resumed_from_checkpoint"]
+  write_manifest(manifest)
+  
   list(ok = TRUE, restored = TRUE, checkpoint_path = manifest$checkpoint_path, session = list(id = manifest$id, port = manifest$port))
 }
 

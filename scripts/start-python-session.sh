@@ -22,11 +22,13 @@ OPTIONS:
     -t, --task-id ID        Task identifier for session tracking
     -d, --description TEXT  Human-readable task description
     -f, --files FILE,...    Comma-separated list of related files
+    -r, --resume-from ID    Resume from a previous session's checkpoint
     -j, --json              Output JSON format
     -h, --help              Show this help message
 
 EXAMPLES:
     $0 --task-id fix-login --description "Debug login flow"
+    $0 --resume-from python-01f25d24-8464-3440-8000-a35805b91c31 --description "Continue analysis"
     $0 --json
     $0 -p 8080
 EOF
@@ -53,6 +55,7 @@ TASK_ID=""
 TASK_DESCRIPTION=""
 RELATED_FILES=""
 PORT=""
+RESUME_FROM=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -72,6 +75,10 @@ while [[ $# -gt 0 ]]; do
       RELATED_FILES="$2"
       shift 2
       ;;
+    -r|--resume-from)
+      RESUME_FROM="$2"
+      shift 2
+      ;;
     -j|--json)
       OUTPUT_FORMAT="json"
       shift
@@ -87,6 +94,42 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+RESUMED_FROM_CHECKPOINT=""
+if [[ -n "$RESUME_FROM" ]]; then
+  OLD_SESSION_DIR="$SESSIONS_DIR/$RESUME_FROM"
+  OLD_MANIFEST="$OLD_SESSION_DIR/manifest.json"
+  
+  if [[ ! -f "$OLD_MANIFEST" ]]; then
+    echo "Error: Session not found: $RESUME_FROM" >&2
+    echo "Run './scripts/list-sessions.sh --json' to see available sessions." >&2
+    exit 1
+  fi
+  
+  OLD_CHECKPOINT=$(python3 - "$OLD_MANIFEST" <<'PY'
+import json
+import sys
+manifest_path = sys.argv[1]
+with open(manifest_path) as f:
+    m = json.load(f)
+print(m.get("checkpoint_path", ""))
+PY
+)
+  
+  if [[ -z "$OLD_CHECKPOINT" ]]; then
+    echo "Error: No checkpoint found in session: $RESUME_FROM" >&2
+    exit 1
+  fi
+  
+  OLD_CHECKPOINT_ABS="$OLD_SESSION_DIR/$(basename "$OLD_CHECKPOINT")"
+  if [[ ! -f "$OLD_CHECKPOINT_ABS" ]]; then
+    echo "Error: Checkpoint file not found: $OLD_CHECKPOINT_ABS" >&2
+    exit 1
+  fi
+  
+  RESUMED_FROM_CHECKPOINT="$OLD_CHECKPOINT_ABS"
+  echo "Resuming from session: $RESUME_FROM (checkpoint: $OLD_CHECKPOINT_ABS)" >&2
+fi
 
 [[ -z "$PORT" ]] && PORT="$(pick_port)"
 
@@ -108,13 +151,13 @@ if [[ -n "$RELATED_FILES" ]]; then
   RELATED_FILES_JSON="$(python3 -c "import json; print(json.dumps([f.strip() for f in '$RELATED_FILES'.split(',')]))")"
 fi
 
-python3 - "$MANIFEST_PATH" "$SESSION_ID" "$PORT" "$SESSION_DIR" "$LOG_PATH" "$CHECKPOINT_PATH" "$ARTIFACT_DIR" "$TASK_ID" "$TASK_DESCRIPTION" "$RELATED_FILES_JSON" <<'PY'
+python3 - "$MANIFEST_PATH" "$SESSION_ID" "$PORT" "$SESSION_DIR" "$LOG_PATH" "$CHECKPOINT_PATH" "$ARTIFACT_DIR" "$TASK_ID" "$TASK_DESCRIPTION" "$RELATED_FILES_JSON" "$RESUME_FROM" "$RESUMED_FROM_CHECKPOINT" <<'PY'
 import json
 import os
 import sys
 from datetime import datetime, timezone
 
-manifest_path, session_id, port, session_dir, log_path, checkpoint_path, artifact_dir, task_id, task_description, related_files_json = sys.argv[1:]
+manifest_path, session_id, port, session_dir, log_path, checkpoint_path, artifact_dir, task_id, task_description, related_files_json, resume_from, resumed_from_checkpoint = sys.argv[1:]
 
 manifest = {
     "id": session_id,
@@ -134,6 +177,10 @@ if task_description:
     manifest["task_description"] = task_description
 if related_files_json and related_files_json != "[]":
     manifest["related_files"] = json.loads(related_files_json)
+if resume_from:
+    manifest["resumed_from"] = resume_from
+if resumed_from_checkpoint:
+    manifest["resumed_from_checkpoint"] = os.path.relpath(resumed_from_checkpoint)
 
 with open(manifest_path, "w", encoding="utf-8") as fh:
     json.dump(manifest, fh, indent=2)

@@ -459,23 +459,36 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/restore":
-            checkpoint_path = Path(manifest["checkpoint_path"])
-            if not checkpoint_path.exists():
+            source_path = Path(manifest["checkpoint_path"])
+
+            resumed_from = manifest.get("resumed_from_checkpoint", "")
+            if resumed_from and Path(resumed_from).exists():
+                source_path = Path(resumed_from)
+
+            if not source_path.exists():
                 self.send_json(
                     404,
                     {
                         "ok": False,
                         "restored": False,
-                        "checkpoint_path": manifest["checkpoint_path"],
+                        "checkpoint_path": str(source_path),
                         "error": "checkpoint not found",
                         "session": {"id": manifest["id"], "port": manifest["port"]},
                     },
                 )
                 return
-            with checkpoint_path.open("rb") as fh:
+            with source_path.open("rb") as fh:
                 runtime.clear()
                 runtime["__builtins__"] = __builtins__
                 runtime.update(pickle.load(fh))
+
+            manifest["checkpoint_path"] = str(
+                Path(manifest["session_dir"]) / "checkpoint.pkl"
+            )
+            if "resumed_from_checkpoint" in manifest:
+                del manifest["resumed_from_checkpoint"]
+            manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+
             self.send_json(
                 200,
                 {

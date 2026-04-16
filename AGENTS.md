@@ -27,12 +27,12 @@ After completing each milestone and verifying against BDD scenarios:
 1. **Describe the changes:**
 
    ```bash
-   jj describe -m "feat(milestone-N): <short description>
+   jj describe -m "<verb> <short description>
    
    - <key change 1>
    - <key change 2>
    
-   Milestone N: <milestone name>"
+   "
    ```
 
 2. **Create the next milestone branch:**
@@ -43,11 +43,11 @@ After completing each milestone and verifying against BDD scenarios:
 
 3. **Verification checklist before describing:**
 
-   - [ ] All BDD scenarios pass
-   - [ ] Both R and Python backends tested
-   - [ ] Protocol contract updated (if applicable)
-   - [ ] Documentation updated
-   - [ ] No regressions in existing functionality
+   - All BDD scenarios pass
+   - Both R and Python backends tested
+   - Protocol contract updated (if applicable)
+   - Documentation updated
+   - No regressions in existing functionality
 
 ### Failure Recovery
 
