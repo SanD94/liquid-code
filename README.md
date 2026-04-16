@@ -18,13 +18,24 @@ Agent -> Bridge Kit (durable) -> Session Bridge (ephemeral) -> Target Runtime
 - `prompts/` contains agent guidance for using the bridge safely.
 - `sessions/` is where runtime session directories are created.
 
-## Near-Term Priorities
+## Milestones
 
-1. Make the R bridge reliable for startup, health checks, eval, and shutdown.
-2. Keep output bounded and move large results into artifacts.
-3. Make recovery explicit with manifests, checkpoints, and logs.
-4. Teach agents to prefer artifact-oriented workflows over giant stdout dumps.
-5. Bring the Python backend into the same contract.
+Milestones 1-5 are complete. See `docs/liquid-code-bdd.md` for the full BDD specification.
+
+### Completed
+1. **Reliable R Bridge** - Start, health, eval, shutdown
+2. **Output And Artifact Discipline** - Truncation, artifact references, slicing
+3. **Recovery** - Checkpoint save and restore
+4. **Agent Guidance** - Prompts for shape-first workflow
+5. **Python Backend Consistency** - Both backends match the shared contract
+
+### In Progress
+6. **Session Management CLI** - List sessions, status, multi-backend scripts
+
+### Planned
+7. **File Operations** - Upload/download, artifact listing
+8. **Session Resilience** - Auto-checkpoint, crash recovery, stale detection
+9. **Async Eval** - Non-blocking eval with job IDs
 
 ## Session Manifest
 

@@ -99,6 +99,85 @@ This document defines milestone-based behavior so the bridge kit can be implemen
 - Then the JSON response envelope matches the R backend contract
 - And the manifest fields keep the same meaning
 
+## Milestone 6: Session Management CLI
+
+### Scenario: List all sessions
+
+- Given multiple session directories exist under `sessions/`
+- When an operator runs `scripts/list-sessions.sh`
+- Then the output shows each session's ID, backend, status, and port
+- And stopped sessions show their exit time
+
+### Scenario: Session status from manifest
+
+- Given a session directory with a valid manifest
+- When an operator queries session status
+- Then the response includes pid, backend, started_at, and checkpoint_path
+- And if the pid is not running, the status shows as "stopped"
+
+### Scenario: Start Python session via script
+
+- Given an operator runs `scripts/start-python-session.sh`
+- When the script completes
+- Then a new session directory exists under `sessions/<id>/`
+- And `manifest.json` records backend as "python"
+- And the Python server is listening on the allocated port
+
+## Milestone 7: File Operations
+
+### Scenario: Upload file to session
+
+- Given a running session
+- When an operator posts a file to `POST /upload`
+- Then the file appears in the session artifact directory
+- And the response confirms the uploaded path and size
+
+### Scenario: Download artifact from session
+
+- Given a running session with artifacts
+- When an operator requests `GET /download/<artifact-path>`
+- Then the response streams the raw file contents
+- And Content-Disposition header suggests a filename
+
+### Scenario: List session artifacts
+
+- Given a running session with files in its artifact directory
+- When a client calls `GET /artifacts`
+- Then the response includes a list of files with path, size, and mtime
+
+## Milestone 8: Session Resilience
+
+### Scenario: Auto-checkpoint on interval
+
+- Given a running session with state
+- When the configured checkpoint interval elapses
+- Then the server automatically calls `/checkpoint`
+- And the checkpoint file is updated without client request
+
+### Scenario: Crash recovery restarts session
+
+- Given a session directory with a valid checkpoint
+- When the server process dies unexpectedly
+- When a new server starts with the same manifest
+- Then the new server can call `/restore` to recover state
+- And the agent receives the same variables as before the crash
+
+### Scenario: Health check detects stale pid
+
+- Given a session whose pid is no longer running
+- When a client calls `GET /health`
+- Then the response includes `stale: true`
+- And the response still includes session metadata for recovery
+
+## Milestone 9: Async Eval (Future)
+
+### Scenario: Eval returns immediately with job ID
+
+- Given a running session
+- When a client posts long-running code to `POST /eval`
+- Then the response returns a job_id immediately
+- And the actual result is available at `GET /result/<job_id>`
+
 ## Verification Checklist
 
 1. Review the manifest shape before implementation changes.
@@ -106,3 +185,7 @@ This document defines milestone-based behavior so the bridge kit can be implemen
 3. Force output truncation and verify the contract fields.
 4. Checkpoint, restart, restore, and verify state persistence.
 5. Repeat the same checks against the Python backend template.
+6. Run `scripts/list-sessions.sh` and verify output format.
+7. Upload a file and verify it appears in the artifact directory.
+8. Verify auto-checkpoint triggers on configured interval.
+9. Kill a session process and verify stale detection on health check.
