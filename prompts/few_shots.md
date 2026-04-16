@@ -9,7 +9,7 @@ Good sequence:
 ```text
 POST /eval {"code":"dim(df); names(df); head(df, 5)"}
 GET /objects
-POST /eval {"code":"write.csv(df, file.path('artifacts', 'df.csv'), row.names = FALSE)"}
+POST /eval {"code":"write.csv(df, file.path(manifest$artifact_dir, 'df.csv'), row.names = FALSE)"}
 GET /artifact?path=df.csv&offset=0&limit=4096
 ```
 
