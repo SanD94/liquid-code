@@ -185,6 +185,43 @@ This document defines milestone-based behavior so the bridge kit can be implemen
 - Then the response includes all jobs with their status
 - And each job shows submitted_at and completed_at timestamps
 
+## Milestone 10: Agent Session Discovery
+
+### Scenario: Session IDs use UUIDv6 format
+
+- Given an operator starts a new session
+- When the session is created
+- Then the session ID is a valid UUIDv6 format
+- And the timestamp is embedded in the UUID for sorting
+
+### Scenario: Active session file tracks current session
+
+- Given a running session
+- When the session starts
+- Then `~/.liquid-code/active` contains the session ID
+- And an agent can read this file to resume the session
+
+### Scenario: Manifest includes task metadata
+
+- Given an agent creates a session with task context
+- When the session is created with task_id and description
+- Then the manifest includes `task_id`, `task_description`, and `related_files`
+- And these fields are queryable via session listing
+
+### Scenario: Session listing with JSON output
+
+- Given multiple sessions exist
+- When an agent queries `scripts/list-sessions.sh --json`
+- Then the output is valid JSON for machine parsing
+- And includes all manifest fields for each session
+
+### Scenario: Agent resumes session from active file
+
+- Given a previous session was marked as active
+- When an agent starts with an empty slate
+- Then the agent can read `~/.liquid-code/active`
+- And query the corresponding session to verify it's still valid
+
 ## Verification Checklist
 
 1. Review the manifest shape before implementation changes.
@@ -197,3 +234,7 @@ This document defines milestone-based behavior so the bridge kit can be implemen
 8. Verify auto-checkpoint triggers on configured interval.
 9. Submit async job and retrieve result via `/result/<job_id>`.
 10. Verify `/jobs` lists all submitted async jobs.
+11. Verify session IDs are valid UUIDv6 format.
+12. Verify `~/.liquid-code/active` contains current session ID.
+13. Verify manifest includes task metadata when provided.
+14. Verify `list-sessions.sh --json` outputs valid JSON.

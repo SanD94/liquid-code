@@ -214,12 +214,14 @@ pyrightconfig.json
 # Virtualenv
 # http://iamzed.com/2009/05/07/a-primer-on-virtualenv/
 [Ii]nclude
-[Ll]ib
 [Ll]ib64
 [Ll]ocal
 venv/
 env/
 pyvenv.cfg
 pip-selfcheck.json
+
+# Liquid Code runtime state
+.liquid-code/
 
 # End of https://www.toptal.com/developers/gitignore/api/macos,python,venv

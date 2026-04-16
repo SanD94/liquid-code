@@ -4,9 +4,33 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SESSIONS_DIR="$ROOT_DIR/sessions"
+SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVER_SCRIPT="$ROOT_DIR/servers/python_server.py"
+LIQUID_HOME="${LIQUID_HOME:-$HOME/.liquid-code}"
+OUTPUT_FORMAT="keyval"
 
 cd "$ROOT_DIR"
+
+show_usage() {
+    cat <<EOF
+Usage: $0 [OPTIONS]
+
+Start a new Python session.
+
+OPTIONS:
+    -p, --port PORT         Use specific port (default: auto-select)
+    -t, --task-id ID        Task identifier for session tracking
+    -d, --description TEXT  Human-readable task description
+    -f, --files FILE,...    Comma-separated list of related files
+    -j, --json              Output JSON format
+    -h, --help              Show this help message
+
+EXAMPLES:
+    $0 --task-id fix-login --description "Debug login flow"
+    $0 --json
+    $0 -p 8080
+EOF
+}
 
 ensure_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -18,7 +42,6 @@ ensure_command() {
 pick_port() {
   python3 - <<'PY'
 import socket
-
 sock = socket.socket()
 sock.bind(("127.0.0.1", 0))
 print(sock.getsockname()[1])
@@ -26,16 +49,48 @@ sock.close()
 PY
 }
 
-ensure_command python3
+TASK_ID=""
+TASK_DESCRIPTION=""
+RELATED_FILES=""
+PORT=""
 
-PORT="${1:-$(pick_port)}"
-STAMP="$(date -u +%Y%m%d%H%M%S)"
-RAND="$(python3 - <<'PY'
-import secrets
-print(secrets.token_hex(3))
-PY
-)"
-SESSION_ID="py-${STAMP}-${RAND}"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -p|--port)
+      PORT="$2"
+      shift 2
+      ;;
+    -t|--task-id)
+      TASK_ID="$2"
+      shift 2
+      ;;
+    -d|--description)
+      TASK_DESCRIPTION="$2"
+      shift 2
+      ;;
+    -f|--files)
+      RELATED_FILES="$2"
+      shift 2
+      ;;
+    -j|--json)
+      OUTPUT_FORMAT="json"
+      shift
+      ;;
+    -h|--help)
+      show_usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1"
+      show_usage
+      exit 1
+      ;;
+  esac
+done
+
+[[ -z "$PORT" ]] && PORT="$(pick_port)"
+
+SESSION_ID="$(python3 "$SCRIPTS_DIR/uuid6.py" python)"
 SESSION_DIR="$SESSIONS_DIR/$SESSION_ID"
 ARTIFACT_DIR="$SESSION_DIR/artifacts"
 LOG_PATH="$SESSION_DIR/server.log"
@@ -43,15 +98,24 @@ MANIFEST_PATH="$SESSION_DIR/manifest.json"
 CHECKPOINT_PATH="$SESSION_DIR/checkpoint.pkl"
 
 mkdir -p "$ARTIFACT_DIR"
+mkdir -p "$LIQUID_HOME"
 touch "$LOG_PATH"
 
-python3 - "$MANIFEST_PATH" "$SESSION_ID" "$PORT" "$SESSION_DIR" "$LOG_PATH" "$CHECKPOINT_PATH" "$ARTIFACT_DIR" <<'PY'
+ensure_command python3
+
+RELATED_FILES_JSON="[]"
+if [[ -n "$RELATED_FILES" ]]; then
+  RELATED_FILES_JSON="$(python3 -c "import json; print(json.dumps([f.strip() for f in '$RELATED_FILES'.split(',')]))")"
+fi
+
+python3 - "$MANIFEST_PATH" "$SESSION_ID" "$PORT" "$SESSION_DIR" "$LOG_PATH" "$CHECKPOINT_PATH" "$ARTIFACT_DIR" "$TASK_ID" "$TASK_DESCRIPTION" "$RELATED_FILES_JSON" <<'PY'
 import json
 import os
 import sys
 from datetime import datetime, timezone
 
-manifest_path, session_id, port, session_dir, log_path, checkpoint_path, artifact_dir = sys.argv[1:]
+manifest_path, session_id, port, session_dir, log_path, checkpoint_path, artifact_dir, task_id, task_description, related_files_json = sys.argv[1:]
+
 manifest = {
     "id": session_id,
     "backend": "python",
@@ -63,6 +127,13 @@ manifest = {
     "checkpoint_path": os.path.relpath(checkpoint_path),
     "artifact_dir": os.path.relpath(artifact_dir),
 }
+
+if task_id:
+    manifest["task_id"] = task_id
+if task_description:
+    manifest["task_description"] = task_description
+if related_files_json and related_files_json != "[]":
+    manifest["related_files"] = json.loads(related_files_json)
 
 with open(manifest_path, "w", encoding="utf-8") as fh:
     json.dump(manifest, fh, indent=2)
@@ -87,7 +158,23 @@ with open(manifest_path, "w", encoding="utf-8") as fh:
     fh.write("\n")
 PY
 
-echo "session_id=$SESSION_ID"
-echo "port=$PORT"
-echo "pid=$PID"
-echo "manifest=$MANIFEST_PATH"
+echo "$SESSION_ID" > "$LIQUID_HOME/active"
+
+if [[ "$OUTPUT_FORMAT" == "json" ]]; then
+  python3 - "$MANIFEST_PATH" <<PY
+import json
+import sys
+
+manifest_path = sys.argv[1]
+with open(manifest_path, "r") as f:
+    manifest = json.load(f)
+
+manifest["status"] = "running"
+print(json.dumps(manifest, indent=2))
+PY
+else
+  echo "session_id=$SESSION_ID"
+  echo "port=$PORT"
+  echo "pid=$PID"
+  echo "manifest=$MANIFEST_PATH"
+fi
