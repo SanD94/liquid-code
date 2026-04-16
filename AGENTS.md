@@ -61,6 +61,45 @@ After completing each milestone and verifying against BDD scenarios:
 
 You are operating through the Liquid Code Bridge Kit. Treat the runtime as a bounded session service, not as an unlimited terminal dump.
 
+### Session Discovery (Empty Slate Problem)
+
+When you start fresh, you need to find or create your session:
+
+```bash
+# Step 1: Check for active session
+./scripts/get-active-session.sh --json
+
+# Step 2: If no active session, check for running sessions
+./scripts/list-sessions.sh --json --status running
+
+# Step 3: If sessions exist, pick the right one
+# Look at task_id, task_description, started_at in the manifest
+
+# Step 4: If no suitable session, create one
+./scripts/start-r-session.sh \
+    --task-id "my-task-123" \
+    --description "Analyze Q1 sales data" \
+    --files "sales.csv,report.md"
+```
+
+### Session Resume Workflow
+
+```bash
+# Get active session port
+PORT=$(./scripts/get-active-session.sh --port-only 2>/dev/null)
+
+if [[ -z "$PORT" ]]; then
+    # No active session, create one
+    ./scripts/start-r-session.sh --task-id "$TASK_ID" --description "$DESCRIPTION"
+    PORT=$(./scripts/get-active-session.sh --port-only)
+fi
+
+# Verify session is alive
+curl http://127.0.0.1:$PORT/health
+
+# Resume work...
+```
+
 ### Rules
 
 1. Check `GET /health` before assuming the session is alive.
@@ -74,38 +113,45 @@ You are operating through the Liquid Code Bridge Kit. Treat the runtime as a bou
 
 **Creating Sessions:**
 
-```text
-GET /health
-POST /checkpoint {}        # Save initial state if needed
+```bash
+./scripts/start-r-session.sh --task-id "fix-login" --description "Debug auth flow"
+PORT=$(./scripts/get-active-session.sh --port-only)
+curl http://127.0.0.1:$PORT/health
 ```
 
 **State Management:**
 
-```text
-POST /checkpoint {}        # Save before risky work
-POST /restore {}           # Recover after restart
+```bash
+curl -X POST http://127.0.0.1:$PORT/checkpoint
+curl -X POST http://127.0.0.1:$PORT/restore
 ```
 
 **Large Outputs:**
 
-```text
-POST /eval {"code":"write.csv(df, file.path(manifest$artifact_dir, 'data.csv'))"}
-GET /artifact?path=data.csv&offset=0&limit=4096
+```bash
+curl -X POST http://127.0.0.1:$PORT/eval \
+    -H "Content-Type: application/json" \
+    -d '{"code":"write.csv(df, file.path(manifest$artifact_dir, \"data.csv\"))"}'
+curl "http://127.0.0.1:$PORT/artifact?path=data.csv&offset=0&limit=4096"
 ```
 
 **Async Long-Running Tasks:**
 
-```text
-POST /eval {"code":"expensive_computation()", "async": true}  # Returns job_id
-GET /jobs                  # Check job statuses
-GET /result/<job_id>       # Get result when ready
+```bash
+curl -X POST http://127.0.0.1:$PORT/eval \
+    -H "Content-Type: application/json" \
+    -d '{"code":"expensive_computation()", "async": true}'
+# Returns job_id, poll until done
+curl http://127.0.0.1:$PORT/result/<job_id>
 ```
 
 **File Upload/Download:**
 
-```text
-POST /upload {"filename":"data.csv", "content":"...", "encoding":"utf-8"}
-GET /download/data.csv     # Stream as file
+```bash
+curl -X POST http://127.0.0.1:$PORT/upload \
+    -H "Content-Type: application/json" \
+    -d '{"filename":"data.csv", "content":"...", "encoding":"utf-8"}'
+curl http://127.0.0.1:$PORT/download/data.csv -o data.csv
 ```
 
 ### Output Strategy
@@ -116,9 +162,10 @@ GET /download/data.csv     # Stream as file
 
 ### Failure Strategy
 
-- Inspect `manifest.json` and `server.log` when startup fails.
-- Treat missing checkpoints as recoverable operational errors, not silent success.
-- Keep protocol usage consistent across R and Python backends.
+- Missing checkpoint → Not a silent success, investigate logs
+- Startup failure → Inspect `manifest.json` and `server.log`
+- Stale process → Use `/restore` to recover from last checkpoint
+- Session not found → Create new session or query list for alternatives
 
 ### Protocol Reference
 

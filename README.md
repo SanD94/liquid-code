@@ -17,6 +17,7 @@ Agent -> Bridge Kit (durable) -> Session Bridge (ephemeral) -> Target Runtime
 - `templates/` contains starter assets for new session bridges.
 - `prompts/` contains agent guidance for using the bridge safely.
 - `sessions/` is where runtime session directories are created.
+- `~/.liquid-code/` is where agent state is persisted (active session).
 
 ## All Milestones Complete
 
@@ -33,22 +34,26 @@ See `docs/liquid-code-bdd.md` for the full BDD specification.
 | 7 | File Operations | Upload, download, artifact listing |
 | 8 | Session Resilience | Auto-checkpoint, crash recovery, health monitoring |
 | 9 | Async Eval | Non-blocking eval with job IDs |
+| 10 | Agent Session Discovery | UUIDv6, task metadata, active session tracking |
 
 ## Session Manifest
 
-Each session owns a `manifest.json` with the minimum lifecycle metadata:
+Each session owns a `manifest.json` with lifecycle and task metadata:
 
 ```json
 {
-  "id": "r-20260416-abc123",
+  "id": "r-01f25d24-8464-3440-8000-a35805b91c31",
   "backend": "r",
   "pid": 12345,
   "port": 8741,
   "started_at": "2026-04-16T10:15:00Z",
-  "session_dir": "./sessions/r-20260416-abc123",
-  "log_path": "./sessions/r-20260416-abc123/server.log",
-  "checkpoint_path": "./sessions/r-20260416-abc123/checkpoint.RData",
-  "artifact_dir": "./sessions/r-20260416-abc123/artifacts"
+  "task_id": "fix-login-bug",
+  "task_description": "Debug the authentication flow",
+  "related_files": ["auth.py", "login.html"],
+  "session_dir": "./sessions/r-01f25d24-8464-3440-8000-a35805b91c31",
+  "log_path": "./sessions/.../server.log",
+  "checkpoint_path": "./sessions/.../checkpoint.RData",
+  "artifact_dir": "./sessions/.../artifacts"
 }
 ```
 
@@ -57,30 +62,44 @@ Each session owns a `manifest.json` with the minimum lifecycle metadata:
 **R Session:**
 
 ```bash
-./scripts/start-r-session.sh
-curl http://127.0.0.1:<port>/health
+./scripts/start-r-session.sh --task-id my-task --description "My analysis"
 ```
 
 **Python Session:**
 
 ```bash
-./scripts/start-python-session.sh
-curl http://127.0.0.1:<port>/health
+./scripts/start-python-session.sh --task-id my-task --description "Data processing"
 ```
 
 **Session Management:**
 
 ```bash
-./scripts/list-sessions.sh
+./scripts/list-sessions.sh           # List all sessions
+./scripts/list-sessions.sh --json     # JSON output for agents
+./scripts/list-sessions.sh --status running
+./scripts/get-active-session.sh       # Get current session info
+./scripts/get-active-session.sh --port-only
 ./scripts/stop-session.sh <session-id>
+```
+
+**For Agents:**
+
+```bash
+# Resume from empty slate
+ACTIVE=$(./scripts/get-active-session.sh --port-only 2>/dev/null)
+if [[ -z "$ACTIVE" ]]; then
+    ./scripts/start-r-session.sh --task-id my-task --description "New task"
+    ACTIVE=$(./scripts/get-active-session.sh --port-only)
+fi
+curl http://127.0.0.1:$ACTIVE/health
 ```
 
 ## Protocol Endpoints
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /health` | Liveness and session metadata |
-| `POST /eval` | Execute code (sync or async) |
+| `GET /health` | Liveness, session metadata, checkpoint status |
+| `POST /eval` | Execute code (sync or async with `async: true`) |
 | `GET /jobs` | List async job statuses |
 | `GET /result/<job_id>` | Get async job result |
 | `GET /objects` | List runtime objects with summaries |

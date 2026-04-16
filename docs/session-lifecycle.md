@@ -47,6 +47,17 @@ Each session directory should contain:
 - Logs should be streamed into the session directory from process start until exit.
 - Artifact paths should be relative to the session artifact directory to keep retrieval simple and safe.
 - Shutdown should preserve the session directory even when the process exits cleanly.
+- Active session file (`~/.liquid-code/active`) tracks the current session for agent resumption.
+
+## Agent Session Discovery
+
+For agents resuming from an empty slate:
+
+1. Check `~/.liquid-code/active` for the current session ID
+2. If exists, verify it's still running via `/health`
+3. If not running or no active session, query `scripts/list-sessions.sh --json --status running`
+4. Select appropriate session based on `task_id` or `task_description`
+5. If no suitable session, create new with `scripts/start-*-session.sh --task-id <id> --description <desc>`
 
 ## Manual Verification
 
