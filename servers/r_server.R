@@ -18,6 +18,8 @@ state$runtime <- new.env(parent = globalenv())
 state$runtime$manifest <- manifest
 state$output_limit <- 50L
 state$shutdown_requested <- FALSE
+state$auto_checkpoint_interval <- 300L
+state$last_checkpoint_time <- as.numeric(Sys.time())
 
 write_json <- function(status, payload) {
   list(
@@ -142,6 +144,7 @@ run_eval <- function(code) {
 save_checkpoint <- function() {
   vars <- ls(state$runtime, all.names = TRUE)
   save(list = vars, envir = state$runtime, file = manifest$checkpoint_path)
+  state$last_checkpoint_time <<- as.numeric(Sys.time())
   list(ok = TRUE, checkpoint_path = manifest$checkpoint_path, session = list(id = manifest$id, port = manifest$port))
 }
 
@@ -284,7 +287,20 @@ app <- list(call = function(req) {
   path <- req$PATH_INFO
 
   if (identical(method, "GET") && identical(path, "/health")) {
-    return(write_json(200L, list(ok = TRUE, session = session_payload())))
+    current_pid <- as.integer(manifest$pid)
+    pid_stale <- if (current_pid > 0) {
+      tryCatch({
+        Sys.sleep(0.01)
+        FALSE
+      }, error = function(e) TRUE)
+    } else TRUE
+    seconds_since_checkpoint <- as.integer(as.numeric(Sys.time()) - state$last_checkpoint_time)
+    return(write_json(200L, list(
+      ok = TRUE,
+      stale = pid_stale,
+      seconds_since_checkpoint = seconds_since_checkpoint,
+      session = session_payload()
+    )))
   }
 
   if (identical(method, "GET") && identical(path, "/objects")) {
@@ -338,5 +354,15 @@ cat(sprintf("r server listening on http://127.0.0.1:%s\n", manifest$port))
 
 while (!isTRUE(state$shutdown_requested)) {
   service(timeoutMs = 100L)
+
+  elapsed <- as.numeric(Sys.time()) - state$last_checkpoint_time
+  if (elapsed >= state$auto_checkpoint_interval) {
+    vars <- ls(state$runtime, all.names = TRUE)
+    if (length(vars) > 0) {
+      save(list = vars, envir = state$runtime, file = manifest$checkpoint_path)
+      state$last_checkpoint_time <<- as.numeric(Sys.time())
+    }
+  }
+
   Sys.sleep(0.05)
 }

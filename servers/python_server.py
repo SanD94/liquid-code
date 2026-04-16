@@ -21,6 +21,8 @@ manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 runtime = {}
 output_limit = 50
 shutdown_event = threading.Event()
+auto_checkpoint_interval = 300
+last_checkpoint_time = 0
 
 
 def session_payload():
@@ -89,7 +91,18 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         if parsed.path == "/health":
-            self.send_json(200, {"ok": True, "session": session_payload()})
+            import time
+
+            seconds_since_checkpoint = int(time.time() - last_checkpoint_time)
+            self.send_json(
+                200,
+                {
+                    "ok": True,
+                    "stale": False,
+                    "seconds_since_checkpoint": seconds_since_checkpoint,
+                    "session": session_payload(),
+                },
+            )
             return
 
         if parsed.path == "/objects":
@@ -345,9 +358,12 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/checkpoint":
+            import time
+
             checkpoint_path = Path(manifest["checkpoint_path"])
             with checkpoint_path.open("wb") as fh:
                 pickle.dump(checkpoint_state(), fh)
+            globals()["last_checkpoint_time"] = time.time()
             self.send_json(
                 200,
                 {
@@ -412,9 +428,23 @@ class Handler(BaseHTTPRequestHandler):
 server = ThreadingHTTPServer(("127.0.0.1", int(manifest["port"])), Handler)
 server.timeout = 0.25
 
+import time
+
+if last_checkpoint_time == 0:
+    globals()["last_checkpoint_time"] = time.time()
+
 print(f"python server listening on http://127.0.0.1:{manifest['port']}")
 
 while not shutdown_event.is_set():
     server.handle_request()
+
+    elapsed = time.time() - last_checkpoint_time
+    if elapsed >= auto_checkpoint_interval:
+        state_to_save = checkpoint_state()
+        if state_to_save:
+            checkpoint_path = Path(manifest["checkpoint_path"])
+            with checkpoint_path.open("wb") as fh:
+                pickle.dump(state_to_save, fh)
+            globals()["last_checkpoint_time"] = time.time()
 
 server.server_close()
