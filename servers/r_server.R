@@ -20,6 +20,7 @@ state$output_limit <- 50L
 state$shutdown_requested <- FALSE
 state$auto_checkpoint_interval <- 300L
 state$last_checkpoint_time <- as.numeric(Sys.time())
+state$jobs <- list()
 
 write_json <- function(status, payload) {
   list(
@@ -139,6 +140,49 @@ run_eval <- function(code) {
     error = result$error,
     session = list(id = manifest$id, port = manifest$port)
   )
+}
+
+submit_job <- function(code) {
+  job_id <- paste0("job-", as.integer(Sys.time()), "-", length(state$jobs) + 1)
+  state$jobs[[job_id]] <<- list(
+    status = "running",
+    code = code,
+    result = NULL,
+    submitted_at = as.character(Sys.time())
+  )
+  list(job_id = job_id, status = "running", session = list(id = manifest$id, port = manifest$port))
+}
+
+execute_job <- function(job_id) {
+  if (!job_id %in% names(state$jobs)) {
+    return(list(ok = FALSE, error = "job not found", session = list(id = manifest$id, port = manifest$port)))
+  }
+  job <- state$jobs[[job_id]]
+  if (job$status == "running") {
+    result <- run_eval(job$code)
+    state$jobs[[job_id]] <<- list(
+      status = if (isTRUE(result$ok)) "completed" else "failed",
+      code = job$code,
+      result = result,
+      submitted_at = job$submitted_at,
+      completed_at = as.character(Sys.time())
+    )
+  }
+  job <- state$jobs[[job_id]]
+  list(ok = TRUE, status = job$status, result = job$result, session = list(id = manifest$id, port = manifest$port))
+}
+
+list_jobs <- function() {
+  jobs <- lapply(names(state$jobs), function(job_id) {
+    job <- state$jobs[[job_id]]
+    list(
+      job_id = job_id,
+      status = job$status,
+      submitted_at = job$submitted_at,
+      completed_at = job$completed_at %||% NA
+    )
+  })
+  list(ok = TRUE, jobs = jobs, session = list(id = manifest$id, port = manifest$port))
 }
 
 save_checkpoint <- function() {
@@ -326,7 +370,20 @@ app <- list(call = function(req) {
   if (identical(method, "POST") && identical(path, "/eval")) {
     body <- parse_body(req)
     code <- body$code %||% ""
+    async <- isTRUE(body$async)
+    if (async) {
+      return(write_json(200L, submit_job(code)))
+    }
     return(write_json(200L, run_eval(code)))
+  }
+
+  if (identical(method, "GET") && identical(path, "/jobs")) {
+    return(write_json(200L, list_jobs()))
+  }
+
+  if (identical(method, "GET") && startsWith(path, "/result/")) {
+    job_id <- substring(path, 9)
+    return(write_json(200L, execute_job(job_id)))
   }
 
   if (identical(method, "POST") && identical(path, "/checkpoint")) {

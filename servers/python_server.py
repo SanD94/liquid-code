@@ -23,6 +23,7 @@ output_limit = 50
 shutdown_event = threading.Event()
 auto_checkpoint_interval = 300
 last_checkpoint_time = 0
+jobs = {}
 
 
 def session_payload():
@@ -64,6 +65,116 @@ def detect_artifacts(before):
             }
         )
     return artifacts
+
+
+def submit_job(code):
+    import time
+
+    job_id = f"job-{int(time.time())}-{len(jobs) + 1}"
+    jobs[job_id] = {
+        "status": "running",
+        "code": code,
+        "result": None,
+        "submitted_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    return {
+        "job_id": job_id,
+        "status": "running",
+        "session": {"id": manifest["id"], "port": manifest["port"]},
+    }
+
+
+def execute_job(job_id):
+    if job_id not in jobs:
+        return {
+            "ok": False,
+            "error": "job not found",
+            "session": {"id": manifest["id"], "port": manifest["port"]},
+        }
+    job = jobs[job_id]
+    if job["status"] != "running":
+        return {
+            "ok": True,
+            "status": job["status"],
+            "result": job["result"],
+            "session": {"id": manifest["id"], "port": manifest["port"]},
+        }
+    result = run_eval_sync(job["code"])
+    job["status"] = "completed" if result.get("ok") else "failed"
+    job["result"] = result
+    job["completed_at"] = result.get("completed_at")
+    return {
+        "ok": True,
+        "status": job["status"],
+        "result": result,
+        "session": {"id": manifest["id"], "port": manifest["port"]},
+    }
+
+
+def list_jobs():
+    job_list = []
+    for job_id, job in jobs.items():
+        job_list.append(
+            {
+                "job_id": job_id,
+                "status": job["status"],
+                "submitted_at": job["submitted_at"],
+                "completed_at": job.get("completed_at"),
+            }
+        )
+    return {
+        "ok": True,
+        "jobs": job_list,
+        "session": {"id": manifest["id"], "port": manifest["port"]},
+    }
+
+
+def run_eval_sync(code):
+    import io
+    import warnings
+    from contextlib import redirect_stdout
+
+    buffer = io.StringIO()
+    caught_warnings = []
+    artifact_root = Path(manifest["artifact_dir"])
+    before_artifacts = {str(p) for p in artifact_root.rglob("*") if p.is_file()}
+
+    try:
+        with warnings.catch_warnings(record=True) as warning_records:
+            warnings.simplefilter("always")
+            with redirect_stdout(buffer):
+                exec(code, runtime, runtime)
+        caught_warnings = [str(item.message) for item in warning_records]
+        ok = True
+        error = None
+    except Exception as exc:
+        ok = False
+        error = str(exc)
+
+    stdout_lines = buffer.getvalue().splitlines()
+    stdout_lines, truncated, total_lines = trim_stdout(stdout_lines)
+    after_artifacts = {str(p) for p in artifact_root.rglob("*") if p.is_file()}
+    artifacts = []
+    for f in after_artifacts - before_artifacts:
+        path = Path(f)
+        artifacts.append(
+            {
+                "path": str(path.relative_to(artifact_root)),
+                "size": path.stat().st_size,
+                "mtime": str(path.stat().st_mtime),
+            }
+        )
+    return {
+        "ok": ok,
+        "stdout": stdout_lines,
+        "warnings": caught_warnings,
+        "messages": [],
+        "artifacts": artifacts,
+        "truncated": truncated,
+        "total_lines": total_lines,
+        "error": error,
+        "session": {"id": manifest["id"], "port": manifest["port"]},
+    }
 
 
 def checkpoint_state():
@@ -125,6 +236,15 @@ class Handler(BaseHTTPRequestHandler):
                     "session": {"id": manifest["id"], "port": manifest["port"]},
                 },
             )
+            return
+
+        if parsed.path == "/jobs":
+            self.send_json(200, list_jobs())
+            return
+
+        if parsed.path.startswith("/result/"):
+            job_id = parsed.path[8:]
+            self.send_json(200, execute_job(job_id))
             return
 
         if parsed.path == "/artifact":
@@ -262,50 +382,14 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/eval":
             payload = self.read_json()
             code = payload.get("code", "")
-            buffer = io.StringIO()
-            caught_warnings = []
-            artifact_root = Path(manifest["artifact_dir"])
-            before_artifacts = {str(p) for p in artifact_root.rglob("*") if p.is_file()}
+            is_async = payload.get("async", False)
 
-            try:
-                with warnings.catch_warnings(record=True) as warning_records:
-                    warnings.simplefilter("always")
-                    with redirect_stdout(buffer):
-                        exec(code, runtime, runtime)
-                caught_warnings = [str(item.message) for item in warning_records]
-                ok = True
-                error = None
-            except Exception as exc:
-                ok = False
-                error = str(exc)
+            if is_async:
+                self.send_json(200, submit_job(code))
+                return
 
-            stdout_lines = buffer.getvalue().splitlines()
-            stdout_lines, truncated, total_lines = trim_stdout(stdout_lines)
-            after_artifacts = {str(p) for p in artifact_root.rglob("*") if p.is_file()}
-            artifacts = []
-            for f in after_artifacts - before_artifacts:
-                path = Path(f)
-                artifacts.append(
-                    {
-                        "path": str(path.relative_to(artifact_root)),
-                        "size": path.stat().st_size,
-                        "mtime": str(path.stat().st_mtime),
-                    }
-                )
-            self.send_json(
-                200,
-                {
-                    "ok": ok,
-                    "stdout": stdout_lines,
-                    "warnings": caught_warnings,
-                    "messages": [],
-                    "artifacts": artifacts,
-                    "truncated": truncated,
-                    "total_lines": total_lines,
-                    "error": error,
-                    "session": {"id": manifest["id"], "port": manifest["port"]},
-                },
-            )
+            result = run_eval_sync(code)
+            self.send_json(200, result)
             return
 
         if parsed.path == "/upload":
