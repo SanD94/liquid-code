@@ -77,3 +77,67 @@ The new session manifest includes `resumed_from` (old session ID) and `resumed_f
 3. Create state, checkpoint it, and confirm the checkpoint file appears in the session directory.
 4. Restore into a fresh process and confirm the state is available again.
 5. Shut the process down and confirm logs and artifacts remain on disk.
+
+## tmux Backend Mode (PoC)
+
+As an alternative to embedding HTTP servers in the runtime process, the tmux backend
+runs the R/Python REPL inside a tmux session. The HTTP wrapper is a separate process
+that uses libtmux to control the REPL.
+
+### Session Directory Expectations (tmux mode)
+
+Each tmux session directory should contain:
+
+- `manifest.json` (includes `tmux_session` field)
+- `server.log`
+- `artifacts/`
+- A backend checkpoint file such as `checkpoint.RData` or `checkpoint.pkl`
+
+### tmux Session Lifecycle
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                      HTTP Wrapper Process                           │
+│  - Stateless - implements protocol endpoints                        │
+│  - Uses libtmux to interact with tmux sessions                     │
+│  - Can restart independently of tmux session                        │
+└────────────────────────────────┬────────────────────────────────────┘
+                                 │ libtmux
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  tmux session: lcr-<session-id>                                    │
+│  ┌───────────────────────────────────────────────────────────────┐ │
+│  │  R/Python REPL (interactive, persistent)                      │ │
+│  │  - stdin/stdout attached to tmux pane                         │ │
+│  │  - State lives in REPL's memory                               │ │
+│  │  - Controlled via tmux send-keys                              │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### tmux Session Naming
+
+- Session name format: `lcr-<session-id>` (e.g., `lcr-r-01f25d24-8464-3440-8000`)
+- The `lcr-` prefix avoids conflicts with other tmux sessions
+- Operators can attach manually: `tmux attach -t <session-name>`
+
+### tmux vs Embedded Server Comparison
+
+| Aspect | Embedded Server | tmux Backend |
+|--------|-----------------|--------------|
+| Session persistence | Tied to server process | Independent of wrapper |
+| Manual interaction | Not directly | `tmux attach` to see REPL |
+| Wrapper crash recovery | Full restart | Just restart wrapper |
+| Architecture complexity | Simpler | Requires libtmux |
+| Output capture | Direct stdout | Pane capture via tmux |
+
+### Manual Verification (tmux mode)
+
+1. Start tmux session: `./scripts/start-r-tmux.sh`
+2. Verify tmux session exists: `tmux list-sessions`
+3. Attach to REPL: `tmux attach -t lcr-<id>` (Ctrl-d to detach)
+4. Confirm `/health` returns expected envelope
+5. Test eval: `POST /eval` with `x <- 2` then `x + 1` returns `3`
+6. Test checkpoint/restore via HTTP
+7. Kill wrapper process, restart, verify session alive
+8. Shutdown and verify tmux session destroyed

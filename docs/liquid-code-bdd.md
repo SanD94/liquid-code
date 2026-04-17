@@ -253,6 +253,107 @@ This document defines milestone-based behavior so the bridge kit can be implemen
 - Then the script reports an error without creating a broken session
 - And logs indicate the checkpoint was not found
 
+## Milestone 12: tmux-Based Backend (PoC)
+
+### Overview
+
+This milestone explores running R/Python REPLs inside tmux sessions as an alternative
+to embedding HTTP servers in the runtime process. The HTTP protocol contract remains
+the same; only the backend execution model changes.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  HTTP Wrapper (tmux_server.py)                             │
+│  - Stateless - implements protocol endpoints                 │
+│  - Uses libtmux to interact with tmux sessions              │
+│  - No runtime state in wrapper process                      │
+└────────────────────────┬──────────────────────────────────┘
+                         │ libtmux / tmux control socket
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│  tmux session: lcr-<session-id>                            │
+│  ┌───────────────────────────────────────────────────────┐ │
+│  │  R/Python REPL (interactive, persistent)             │ │
+│  │  - stdin/stdout attached to tmux pane                 │ │
+│  │  - State lives in REPL's memory                       │ │
+│  │  - Controlled via tmux send-keys                      │ │
+│  └───────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Scenario: Start tmux-based R session
+
+- Given an operator runs `scripts/start-r-tmux.sh`
+- When the script completes
+- Then a tmux session named `lcr-<id>` is running
+- And a session directory exists under `sessions/<id>/`
+- And `manifest.json` records the tmux session name and wrapper port
+- And `GET /health` returns `ok: true`
+
+### Scenario: Eval via tmux preserves state
+
+- Given a running tmux-based R session
+- When a client posts `x <- 2` to `POST /eval`
+- And the client later posts `x + 1`
+- Then the second response prints `3`
+
+### Scenario: Checkpoint saves tmux session state
+
+- Given a running tmux session with objects in memory
+- When a client posts to `POST /checkpoint`
+- Then the runtime writes a checkpoint file via tmux send-keys
+- And the file appears at the manifest checkpoint path
+
+### Scenario: Restore loads checkpoint into tmux session
+
+- Given a stopped tmux session with a saved checkpoint
+- When a new tmux session posts to `POST /restore`
+- Then the checkpoint file is loaded via tmux send-keys
+- And previously saved variables reappear in the backend environment
+
+### Scenario: tmux session can be attached manually
+
+- Given a running tmux session
+- When an operator runs `tmux attach -t lcr-<session-id>`
+- Then the operator sees the live R REPL
+- And can interact with it directly
+
+### Scenario: tmux session outlives HTTP wrapper crash
+
+- Given a running tmux session with state
+- When the HTTP wrapper process dies
+- And a new wrapper starts with the same manifest
+- Then the tmux session is still running
+- And `GET /health` returns `ok: true`
+
+### Scenario: Shutdown destroys tmux session
+
+- Given a running tmux session
+- When a client posts to `POST /shutdown`
+- Then the tmux session is killed
+- And the session directory is preserved for inspection
+
+### Scenario: tmux backend uses same protocol contract
+
+- Given a running tmux-based R session
+- When a client calls any endpoint from CONTRACT.md
+- Then the JSON response envelope matches the standard contract
+- And session metadata fields have the same meaning
+
+### Verification Checklist for Milestone 12
+
+1. [ ] `tmux list-sessions` shows `lcr-<id>` session after start
+2. [ ] `GET /health` returns expected envelope
+3. [ ] `POST /eval` with `x <- 2` then `x + 1` returns `3`
+4. [ ] `POST /checkpoint` creates checkpoint file
+5. [ ] New session: `POST /restore` loads previous checkpoint
+6. [ ] `tmux attach -t lcr-<id>` shows live REPL
+7. [ ] Kill wrapper process, restart, verify session alive
+8. [ ] `POST /shutdown` destroys tmux session
+9. [ ] `scripts/list-sessions.sh` correctly reports tmux sessions
+
 ## Verification Checklist
 
 1. Review the manifest shape before implementation changes.
@@ -272,3 +373,11 @@ This document defines milestone-based behavior so the bridge kit can be implemen
 15. Resume from old session checkpoint and verify state loads correctly.
 16. Verify new session creates its own checkpoint after resume.
 17. Verify resume fails gracefully for invalid checkpoint path.
+18. `tmux list-sessions` shows `lcr-<id>` session after start
+19. `GET /health` returns expected envelope for tmux backend
+20. `POST /eval` via tmux preserves state (x <- 2; x + 1 = 3)
+21. `POST /checkpoint` saves state via tmux send-keys
+22. `POST /restore` loads checkpoint via tmux send-keys
+23. `tmux attach -t lcr-<id>` shows live REPL
+24. tmux session outlives HTTP wrapper crash
+25. `POST /shutdown` destroys tmux session cleanly

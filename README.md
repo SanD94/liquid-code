@@ -36,6 +36,7 @@ See `docs/liquid-code-bdd.md` for the full BDD specification.
 | 9 | Async Eval | Non-blocking eval with job IDs |
 | 10 | Agent Session Discovery | UUIDv6, task metadata, active session tracking |
 | 11 | Cross-Session Restore | Resume from checkpoint in old session |
+| 12 | tmux Backend (PoC) | R/Python REPL inside tmux sessions |
 
 ## Session Manifest
 
@@ -64,7 +65,15 @@ The `resumed_from` and `resumed_from_checkpoint` fields are only present in sess
 
 ## Quick Start
 
-**R Session:**
+**tmux Backend Mode (PoC):**
+
+```bash
+# Requires: tmux, libtmux (pip install libtmux)
+./scripts/start-r-tmux.sh --task-id my-task --description "My analysis"
+tmux attach -t lcr-<session-id>  # Attach to see live REPL
+```
+
+**Standard R Session:**
 
 ```bash
 ./scripts/start-r-session.sh --task-id my-task --description "My analysis"

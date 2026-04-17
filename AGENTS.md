@@ -202,3 +202,61 @@ curl http://127.0.0.1:$PORT/download/data.csv -o data.csv
 ### Protocol Reference
 
 See `protocol/CONTRACT.md` for the complete endpoint specification.
+
+---
+
+## Part 3: tmux Backend Mode (PoC)
+
+The tmux backend runs R/Python REPLs inside tmux sessions. This provides:
+- Manual REPL inspection: `tmux attach -t <session-name>`
+- Wrapper crash resilience: tmux session persists independently
+- Same HTTP protocol contract as embedded servers
+
+### tmux Session Naming
+
+- Format: `lcr-<session-id>` (e.g., `lcr-r-01f25d24-8464-3440-8000`)
+- Prefix `lcr-` avoids conflicts with other tmux sessions
+
+### tmux Session Discovery
+
+```bash
+# List all liquid-code tmux sessions
+tmux list-sessions
+
+# Check if specific session exists
+tmux has-session -t lcr-<session-id>
+
+# Attach to see live REPL (Ctrl-d to detach)
+tmux attach -t lcr-<session-id>
+```
+
+### tmux Session Workflow
+
+```bash
+# Start tmux-based session
+./scripts/start-r-tmux.sh \
+    --task-id "my-task-123" \
+    --description "Analyze data"
+
+# Verify tmux session is running
+tmux list-sessions
+
+# Attach to see REPL directly (optional)
+tmux attach -t lcr-<session-id>
+
+# Work via HTTP as usual
+PORT=$(./scripts/get-active-session.sh --port-only)
+curl http://127.0.0.1:$PORT/health
+
+# Stop session
+./scripts/stop-tmux-session.sh lcr-<session-id>
+```
+
+### tmux vs Embedded Comparison
+
+| Aspect | Embedded Server | tmux Backend |
+|--------|-----------------|--------------|
+| Manual REPL access | No | Yes (`tmux attach`) |
+| Wrapper crash | Full restart | Just restart wrapper |
+| Complexity | Simpler | Requires libtmux |
+| Protocol | Same | Same |
