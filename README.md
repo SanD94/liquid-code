@@ -13,7 +13,8 @@ Agent -> Bridge Kit (durable) -> Session Bridge (ephemeral) -> Target Runtime
 - `docs/` contains the product plan, BDD milestones, and lifecycle notes.
 - `protocol/` defines the HTTP contract shared by all backends.
 - `scripts/` contains operator-facing session start and stop helpers.
-- `servers/` contains backend server templates.
+- `servers/` contains backend server templates (embedded mode).
+- `backend/` contains backend implementations (tmux mode).
 - `templates/` contains starter assets for new session bridges.
 - `prompts/` contains agent guidance for using the bridge safely.
 - `sessions/` is where runtime session directories are created.

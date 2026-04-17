@@ -84,6 +84,11 @@ As an alternative to embedding HTTP servers in the runtime process, the tmux bac
 runs the R/Python REPL inside a tmux session. The HTTP wrapper is a separate process
 that uses libtmux to control the REPL.
 
+### Requirements
+
+- `tmux` must be installed
+- `libtmux` Python package: `pip install libtmux`
+
 ### Session Directory Expectations (tmux mode)
 
 Each tmux session directory should contain:

@@ -212,6 +212,11 @@ The tmux backend runs R/Python REPLs inside tmux sessions. This provides:
 - Wrapper crash resilience: tmux session persists independently
 - Same HTTP protocol contract as embedded servers
 
+### Requirements
+
+- `tmux` must be installed
+- `libtmux` Python package: `pip install libtmux`
+
 ### tmux Session Naming
 
 - Format: `lcr-<session-id>` (e.g., `lcr-r-01f25d24-8464-3440-8000`)

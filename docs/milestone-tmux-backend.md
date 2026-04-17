@@ -219,12 +219,12 @@ dill.load_session("/path/to/checkpoint.pkl")
 ## Success Criteria
 
 - [x] tmux session starts with R REPL
-- [ ] libtmux can send code and capture output
-- [ ] HTTP wrapper serves /health, /eval, /checkpoint, /restore
-- [ ] State persists across /eval calls (x <- 2; x + 1 = 3)
-- [ ] /checkpoint saves state to disk
-- [ ] /restore loads checkpoint into fresh session
-- [ ] tmux session can be destroyed cleanly
+- [x] libtmux can send code and capture output
+- [x] HTTP wrapper serves /health, /eval, /checkpoint, /restore
+- [x] State persists across /eval calls (x <- 2; x + 1 = 3)
+- [x] /checkpoint saves state to disk
+- [x] /restore loads checkpoint into fresh session
+- [x] tmux session can be destroyed cleanly
 
 ## Future Extensions (Post-PoC)
 
