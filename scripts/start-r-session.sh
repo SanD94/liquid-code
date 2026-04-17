@@ -176,10 +176,10 @@ manifest = {
     "pid": 0,
     "port": int(port),
     "started_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
-    "session_dir": os.path.relpath(session_dir),
-    "log_path": os.path.relpath(log_path),
-    "checkpoint_path": os.path.relpath(checkpoint_path),
-    "artifact_dir": os.path.relpath(artifact_dir),
+    "session_dir": session_dir,
+    "log_path": log_path,
+    "checkpoint_path": checkpoint_path,
+    "artifact_dir": artifact_dir,
 }
 
 if task_id:
@@ -198,6 +198,7 @@ with open(manifest_path, "w", encoding="utf-8") as fh:
     fh.write("\n")
 PY
 
+cd "$SESSION_DIR"
 Rscript "$SERVER_SCRIPT" "$MANIFEST_PATH" >>"$LOG_PATH" 2>&1 &
 PID=$!
 
